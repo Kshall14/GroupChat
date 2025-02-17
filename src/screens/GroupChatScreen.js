@@ -1,110 +1,85 @@
 import React, { useState, useEffect } from 'react';
 import { View, TextInput, Button, FlatList, Text, StyleSheet } from 'react-native';
-import { getDatabase, ref, push, onValue } from 'firebase/database';
 import { getAuth } from 'firebase/auth'; // Add this import
+import { useDispatch, useSelector } from 'react-redux';
+import { fetchMessagesRequest, sendMessageRequest } from '../redux/slices/DatabaseSlices.js';
+import BackgroundImage from '../components/AppBackground.js';
 import { app } from '../../firebaseConfig.js';
 
 const GroupChatScreen = () => {
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState([]);
+  const dispatch = useDispatch();
+  const { messages, loading, error } = useSelector((state) => state.groupChat);
+  const auth = getAuth(app); // Initialize auth
 
-  const db = getDatabase(app);
-  const messagesRef = ref(db, 'messages');
-  const auth = getAuth(app); // Add this line
-
-  // Fetch messages from Firebase
   useEffect(() => {
-    console.log('Setting up Firebase listener...');
-    const unsubscribe = onValue(messagesRef, (snapshot) => {
-      console.log('Received data from Firebase:', snapshot.val());
-      const data = snapshot.val();
-      if (data) {
-        const messageList = Object.keys(data).map((key) => ({
-          id: key,
-          ...data[key],
-        }));
-        console.log('Messages fetched:', messageList);
-        setMessages(messageList);
-      } else {
-        console.log('No messages found in Firebase.');
-      }
-    });
+    dispatch(fetchMessagesRequest());
+  }, [dispatch]);
 
-    return () => {
-      console.log('Cleaning up Firebase listener...');
-      unsubscribe();
-    };
-  }, []);
-
-  // Send a new message
   const sendMessage = () => {
-    console.log('Send button pressed. Current message:', message);
-    console.log('Current user:', auth.currentUser); // Log the current user
-  
     if (message.trim()) {
-      // Check if the user is authenticated and has a display name
-      if (auth.currentUser && auth.currentUser.displayName) {
-        console.log('Pushing message to Firebase...');
-        console.log('Database reference:', messagesRef.toString()); // Log the database reference
-  
-        // Push the message to Firebase with the display name
-        push(messagesRef, {
-          text: message,
-          timestamp: Date.now(),
-          displayName: auth.currentUser.displayName, // Add the display name
-        })
-          .then(() => {
-            console.log('Message successfully sent to Firebase.');
-            setMessage(''); // Clear input
-          })
-          .catch((error) => {
-            console.error('Error sending message to Firebase:', error);
-          });
-      } else {
-        console.error('User is not authenticated or does not have a display name.');
-      }
-    } else {
-      console.log('Message is empty. Not sending.');
+      dispatch(sendMessageRequest({ message }));
+      setMessage('');
     }
   };
-  /*
-const flatListRef = useRef(null);
-useEffect(() => {
-  if (flatListRef.current && messages.length > 0) {
-    flatListRef.current.scrollToEnd({ animated: true });
-  }
-}, [messages]);
-*/
-  return (
-    <View style={styles.container}>
-      {/* Message List */}
-      <FlatList
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={[
-            styles.messageContainer,
-            item.displayName === auth.currentUser?.displayName && styles.currentUserMessage,
-          ]}>
-              <Text style={styles.displayName}>
-              {item.displayName} <Text style={styles.timestamp}>{new Date(item.timestamp).toLocaleTimeString()}</Text>
-            </Text>
-            <Text style={styles.messageText}>{item.text}</Text>
-          </View>
-        )}
-      />
 
-      {/* Message Input */}
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Type a message"
-          value={message}
-          onChangeText={setMessage}
+  if (loading) {
+    return (
+      <BackgroundImage>
+        <View style={styles.container}>
+          <Text>Loading...</Text>
+        </View>
+      </BackgroundImage>
+    );
+  }
+
+  if (error) {
+    return (
+      <BackgroundImage>
+        <View style={styles.container}>
+          <Text>Error: {error}</Text>
+        </View>
+      </BackgroundImage>
+    );
+  }
+
+  return (
+    <BackgroundImage>
+      <View style={styles.container}>
+        <FlatList
+          data={messages}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View
+              style={[
+                styles.messageContainer,
+                item.displayName === auth.currentUser?.displayName && styles.currentUserMessage,
+              ]}
+            >
+              <Text style={styles.displayName}>
+                {item.displayName}{' '}
+                <Text style={styles.timestamp}>
+                  {new Date(item.timestamp).toLocaleTimeString()}
+                </Text>
+              </Text>
+              <Text style={styles.messageText}>{item.text}</Text>
+            </View>
+          )}
         />
-        <Button title="Send" onPress={sendMessage} />
+
+        {/* Message Input */}
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Type a message"
+            placeholderTextColor="#FFFFFF"
+            value={message}
+            onChangeText={setMessage}
+          />
+          <Button title="Send" onPress={sendMessage} />
+        </View>
       </View>
-    </View>
+    </BackgroundImage>
   );
 };
 
@@ -139,6 +114,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 8,
     marginRight: 8,
+    placeholderTextColor: '#FFFFFF',
+    color: '#FFFFFF',
   },
   timestamp: {
     fontSize: 12,
@@ -147,7 +124,6 @@ const styles = StyleSheet.create({
   currentUserMessage: {
     alignSelf: 'flex-end',
     backgroundColor: '#dcf8c6', // Light green background for current user
-    
   },
 });
 
